@@ -19,12 +19,6 @@ double now_sec() {
     return ts.tv_sec + ts.tv_nsec * 1e-9;
 }
 
-int core_for(int processor) {
-    unsigned hc = std::thread::hardware_concurrency();
-    if (hc == 0) hc = 1;
-    return static_cast<int>(static_cast<unsigned>(processor) % hc);
-}
-
 }  // namespace
 
 Dispatcher::Dispatcher(const Dag& dag, const Schedule& schedule, KernelConfig cfg)
@@ -191,7 +185,7 @@ ExecutionResult Dispatcher::run() {
     std::vector<std::thread> threads;
     threads.reserve(p);
     for (std::size_t proc = 0; proc < p; ++proc) {
-        threads.emplace_back(&Dispatcher::worker_loop, this, static_cast<int>(proc), core_for(static_cast<int>(proc)));
+        threads.emplace_back(&Dispatcher::worker_loop, this, static_cast<int>(proc), core_for_processor(static_cast<int>(proc)));
     }
     // Unconditional join, including on the exception path out of this
     // scope: no worker lambda may outlive this stack frame's members

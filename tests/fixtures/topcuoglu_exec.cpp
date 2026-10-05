@@ -92,9 +92,10 @@ int main() {
         "\nNOTE: 'predicted' is in the paper's arbitrary cost-table units, not\n"
         "seconds like 'measured' -- error%% here is therefore NOT a calibrated\n"
         "prediction error, only a same-DAG comparison of the two schedulers'\n"
-        "relative predicted-vs-measured behavior. Getting a real, unit-matched\n"
-        "error requires calibrating Task::cost from measured per-kernel timings\n"
-        "(src/profile/ -- not yet implemented) instead of the paper's table.\n");
+        "relative predicted-vs-measured behavior. For a real, unit-matched error\n"
+        "(Task::cost calibrated from measured per-kernel timings instead of the\n"
+        "paper's table), see tests/fixtures/topcuoglu_calibrated.cpp\n"
+        "(src/profile/).\n");
 
     return 0;
 }

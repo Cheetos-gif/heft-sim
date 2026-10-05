@@ -16,4 +16,11 @@ namespace heftsim {
 // unsafe to continue (see contention_pilot.cpp's identical tradeoff).
 bool pin_current_thread(int core);
 
+// Centralized processor -> core mapping used by every component that
+// either executes a Dag's tasks (src/exec/dispatcher.cpp) or needs to
+// measure costs on the exact cores a real Dispatcher run would use
+// (src/profile/calibration.cpp): core = processor % hardware_concurrency().
+// Kept in one place so the two can never drift apart.
+int core_for_processor(int processor);
+
 }  // namespace heftsim

@@ -49,7 +49,7 @@ fi
 header "BUILD: cleaning and compiling everything from scratch"
 
 rm -f contention_pilot
-rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft
+rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated
 rm -f tests/fixtures/*.exe
 rm -rf out
 
@@ -80,16 +80,25 @@ $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_ft \
     src/exec/heartbeat.cpp src/exec/dispatcher.cpp \
     src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp
 
+echo "-- tests/fixtures/topcuoglu_calibrated (sigma/pi calibration, unit-matched error%)"
+$CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_calibrated \
+    tests/fixtures/topcuoglu_calibrated.cpp \
+    src/dag/dag.cpp src/sched/heft.cpp src/sched/naive.cpp \
+    src/kernels/kernel.cpp src/exec/affinity.cpp src/exec/event_log.cpp \
+    src/exec/heartbeat.cpp src/exec/dispatcher.cpp \
+    src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp \
+    src/profile/pressure.cpp src/profile/probe.cpp src/profile/calibration.cpp
+
 echo "build OK"
 
 # ------------------------------------------------------------- stage 1
 
-header "STAGE 1/5: contention pilot (10 reps) -- does contention exist at all?"
+header "STAGE 1/6: contention pilot (10 reps) -- does contention exist at all?"
 $RUN ./contention_pilot 10
 
 # ------------------------------------------------------------- stage 2
 
-header "STAGE 2/5: Topcuoglu HEFT test suite (paper fixture regression)"
+header "STAGE 2/6: Topcuoglu HEFT test suite (paper fixture regression)"
 if $RUN ./tests/fixtures/topcuoglu; then
     echo "RESULT: PASS -- HEFT matches the published paper's ranks/schedule/makespan"
 else
@@ -106,20 +115,20 @@ fi
 # not two separate runs (packaging only -- this script does not split or
 # alter what that binary computes or prints).
 
-header "STAGE 3/5: naive vs HEFT -- predicted makespan for both"
+header "STAGE 3/6: naive vs HEFT -- predicted makespan for both"
 echo "(predicted numbers appear in the 'predicted' column of the table below)"
 
-header "STAGE 4/5: real-thread execution -- measured makespan"
+header "STAGE 4/6: real-thread execution -- measured makespan"
 echo "(same run as stage 3; 'measured(s)' column below is real pinned-thread execution)"
 echo
 echo "NOTE: predicted is in paper cost-units, measured is in seconds;"
-echo "not yet calibrated (see src/profile/)."
+echo "unit-matched calibration is stage 6 (topcuoglu_calibrated), not this one."
 echo
 $RUN ./tests/fixtures/topcuoglu_exec
 
 # ------------------------------------------------------------- stage 5
 
-header "STAGE 5/5: fault injection -- kill, FAILURE_DETECTED, recovery"
+header "STAGE 5/6: fault injection -- kill, FAILURE_DETECTED, recovery"
 ft_rc=0
 ft_output="$($RUN ./tests/fixtures/topcuoglu_ft)" || ft_rc=$?
 echo "$ft_output"
@@ -140,5 +149,10 @@ if [[ "$ft_rc" -ne 0 ]]; then
     exit 1
 fi
 echo "FT demo checks: PASS"
+
+# ------------------------------------------------------------- stage 6
+
+header "STAGE 6/6: sigma/pi calibration -- unit-matched predicted-vs-measured error"
+$RUN ./tests/fixtures/topcuoglu_calibrated
 
 header "DEMO COMPLETE"
