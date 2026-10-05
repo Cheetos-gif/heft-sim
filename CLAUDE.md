@@ -31,24 +31,52 @@ tests/
 
 ## Current phase
 Phase 6 (src/ft/, kernel chunking, HeartbeatRegistry, fault injection +
-recovery) landed as described below, but its commit mistakenly put the
-entire src/ tree under out/src/ instead of src/ -- fixed (git mv); no
-source changed, only location.
+recovery): landed as described below; its commit had mistakenly put the
+entire src/ tree under out/src/ instead of src/, fixed (git mv, no
+source changed).
 
-Phase 7: src/profile/ (pressure.{hpp,cpp}, probe.{hpp,cpp},
-calibration.{hpp,cpp}) landed -- reporter/interferer methodology from
-contention_pilot.cpp lifted into a reusable library. calibrate()
-measures sigma(kernel, processor) (median solo seconds, src/profile/probe)
-on every processor src/exec/affinity.hpp's core_for_processor() would
-actually use, plus pi(reporter, interferer) (contended/solo ratio) on one
-representative core pair. New fixture
-tests/fixtures/topcuoglu_calibrated.cpp builds the paper DAG's topology
-with Task::cost set from sigma instead of the paper's arbitrary units,
-runs it through HEFT/naive, executes for real, and prints a genuinely
-unit-matched predicted-vs-measured error% -- resolves topcuoglu_exec.cpp's
-printed calibration caveat. pi is extracted but not yet consumed by any
-scheduler (naive/heft remain intentionally contention-oblivious; that's
-what's being measured).
+Phase 7 (src/profile/ sigma/pi): landed. pressure.{hpp,cpp} (reusable
+background-load thread, generalized from contention_pilot.cpp's
+interferer_fn), probe.{hpp,cpp} (measure_solo/measure_contended,
+reporter/interferer methodology), calibration.{hpp,cpp} +
+calibrate_sweep.cpp (CalibrationProfile; calibrate() sweeps
+sigma(kernel, processor) and pi(reporter, interferer) kernel pairs).
+
+Phase 8 (src/profile/ regression test): tests/fixtures/profile_calibration.cpp,
+33 structural checks (positivity/finiteness, cost()/comm_cost() range
+rejection, measure_contended/measure_handoff same-core rejection) --
+real timings vary by machine, so this checks invariants, not exact
+numbers, unlike tests/fixtures/topcuoglu.cpp's paper-exact checks.
+
+Phase 9 (src/profile/ comm calibration): comm_probe.{hpp,cpp} measures
+real cross-core handoff latency (producer/consumer ping-pong, busy-wait
+synchronized, release/acquire on a sequence number). CalibrationProfile
+gained comm[from][to] (full processor-pair matrix, diagnostic) and
+mean_comm_cost() (single scalar -- src/sched/heft.cpp's cost model takes
+one flat comm_cost per edge, not a pair matrix). Wired into
+src/sched/eheft.hpp::calibrate_costs(), replacing the previous hardcoded
+0.0 edge cost.
+
+Phase 10 (src/sched/eheft -- empirical HEFT): landed. eheft.{hpp,cpp}:
+calibrate_costs() substitutes a topology's Task::cost from a
+CalibrationProfile (ignoring the topology's own cost table) and its edge
+comm_cost from mean_comm_cost(); eheft_schedule()/EheftScheduler run
+heft_schedule() (src/sched/heft.cpp unmodified) on the result. Still
+contention-oblivious by design -- it's the fair baseline cheft is meant
+to beat. tests/fixtures/eheft.cpp: 25 hand-computed checks (small 3-task
+fixture, worked rank_u/EFT/makespan by hand). tests/fixtures/
+topcuoglu_calibrated.cpp refactored to use EheftScheduler instead of a
+duplicated fixture-specific DAG builder; prints sigma, pi, mean comm
+cost, and a genuinely unit-matched predicted-vs-measured error% --
+resolves topcuoglu_exec.cpp's calibration caveat (reworded to point
+here).
+
+Phase 12 (src/dag/generators): landed. generate_layered_dag() produces
+reproducible (seeded) random layered DAGs -- edges only between adjacent
+layers (acyclic by construction, no cycle check needed), every
+non-layer-0 task guaranteed >=1 predecessor. tests/fixtures/generators.cpp:
+745 checks swept across seeds/configs (including edge_probability 0.0
+and 1.0 extremes, bad-config rejection).
 
 Phase 6 fault-tolerance details (unchanged): Dispatcher::enable_fault_tolerance()
 kills one random task's first attempt and recovers it once via
@@ -57,6 +85,9 @@ logged. tests/fixtures/topcuoglu_ft covers the completion-vs-failure
 CAS race (dispatcher.hpp hazards #9-#11), stress-tested 45+ runs
 across every task id including the entry task, no flakes.
 
-Next: cheft (contention-aware scheduler consuming sigma/pi) and/or
-analysis/ (Python plots/tables turning out/*.csv into the paper's
-predicted-vs-measured error figures) -- neither exists yet.
+Next: Phase 11 (src/sched/cheft -- contention-aware scheduler consuming
+sigma/pi, meant to beat eheft's predicted-vs-measured error on the same
+workload) and Phase 13/14 (benchmark harness running naive/heft/eheft/
+cheft across many generated DAGs into a machine-readable results log,
+plus analysis/ turning that into the paper's plots/tables) -- none of
+these exist yet.

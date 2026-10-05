@@ -49,7 +49,7 @@ fi
 header "BUILD: cleaning and compiling everything from scratch"
 
 rm -f contention_pilot
-rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated
+rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated tests/fixtures/profile_calibration tests/fixtures/eheft tests/fixtures/generators
 rm -f tests/fixtures/*.exe
 rm -rf out
 
@@ -83,11 +83,28 @@ $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_ft \
 echo "-- tests/fixtures/topcuoglu_calibrated (sigma/pi calibration, unit-matched error%)"
 $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_calibrated \
     tests/fixtures/topcuoglu_calibrated.cpp \
-    src/dag/dag.cpp src/sched/heft.cpp src/sched/naive.cpp \
+    src/dag/dag.cpp src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp \
     src/kernels/kernel.cpp src/exec/affinity.cpp src/exec/event_log.cpp \
     src/exec/heartbeat.cpp src/exec/dispatcher.cpp \
     src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp \
-    src/profile/pressure.cpp src/profile/probe.cpp src/profile/calibration.cpp
+    src/profile/pressure.cpp src/profile/probe.cpp src/profile/comm_probe.cpp \
+    src/profile/calibration.cpp src/profile/calibrate_sweep.cpp
+
+echo "-- tests/fixtures/eheft (empirical-HEFT regression)"
+$CXX $CXXFLAGS -o tests/fixtures/eheft \
+    tests/fixtures/eheft.cpp src/dag/dag.cpp src/sched/heft.cpp src/sched/eheft.cpp \
+    src/profile/calibration.cpp
+
+echo "-- tests/fixtures/profile_calibration (src/profile/ structural regression)"
+$CXX $CXXFLAGS_PTHREAD -o tests/fixtures/profile_calibration \
+    tests/fixtures/profile_calibration.cpp \
+    src/kernels/kernel.cpp src/exec/affinity.cpp \
+    src/profile/pressure.cpp src/profile/probe.cpp src/profile/comm_probe.cpp \
+    src/profile/calibration.cpp src/profile/calibrate_sweep.cpp
+
+echo "-- tests/fixtures/generators (src/dag/generators.hpp validation sweep)"
+$CXX $CXXFLAGS -o tests/fixtures/generators \
+    tests/fixtures/generators.cpp src/dag/dag.cpp src/dag/generators.cpp src/sched/heft.cpp
 
 echo "build OK"
 
@@ -98,11 +115,32 @@ $RUN ./contention_pilot 10
 
 # ------------------------------------------------------------- stage 2
 
-header "STAGE 2/6: Topcuoglu HEFT test suite (paper fixture regression)"
+header "STAGE 2/6: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft)"
 if $RUN ./tests/fixtures/topcuoglu; then
     echo "RESULT: PASS -- HEFT matches the published paper's ranks/schedule/makespan"
 else
     echo "RESULT: FAIL -- HEFT disagrees with the published paper"
+    exit 1
+fi
+echo
+if $RUN ./tests/fixtures/eheft; then
+    echo "RESULT: PASS -- eheft calibration substitution + schedule match hand-computed fixture"
+else
+    echo "RESULT: FAIL -- eheft disagrees with hand-computed fixture"
+    exit 1
+fi
+echo
+if $RUN ./tests/fixtures/profile_calibration; then
+    echo "RESULT: PASS -- src/profile/ structural checks"
+else
+    echo "RESULT: FAIL -- src/profile/ structural checks"
+    exit 1
+fi
+echo
+if $RUN ./tests/fixtures/generators; then
+    echo "RESULT: PASS -- generate_layered_dag() invariant sweep"
+else
+    echo "RESULT: FAIL -- generate_layered_dag() invariant sweep"
     exit 1
 fi
 

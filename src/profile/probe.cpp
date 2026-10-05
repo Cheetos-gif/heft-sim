@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <ctime>
+#include <stdexcept>
 #include <thread>
 
 namespace heftsim::profile {
@@ -51,6 +52,10 @@ ProbeResult measure_solo(KernelType kernel, int core, const KernelConfig& cfg, i
 
 ProbeResult measure_contended(KernelType reporter, int coreA, KernelType interferer, int coreB,
                                const KernelConfig& cfg, int reps, unsigned seed) {
+    if (coreA == coreB) {
+        throw std::invalid_argument("measure_contended: coreA and coreB must be distinct");
+    }
+
     ProbeResult result;
     std::vector<double> samples;
     samples.reserve(static_cast<std::size_t>(reps));

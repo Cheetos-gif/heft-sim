@@ -36,7 +36,9 @@ ProbeResult measure_solo(KernelType kernel, int core, const KernelConfig& cfg, i
 // Median wall-clock time of `reporter` on coreA while `interferer` loops
 // continuously on coreB for the reporter's entire measured window.
 // coreA and coreB must be distinct, or the reporter and interferer would
-// be pinned to the same core and "contention" would really be preemption.
+// be pinned to the same core and "contention" would really be preemption
+// -- throws std::invalid_argument if they're equal, the same
+// fail-loudly-on-malformed-input discipline src/dag/dag.cpp uses.
 ProbeResult measure_contended(KernelType reporter, int coreA, KernelType interferer, int coreB,
                                const KernelConfig& cfg, int reps, unsigned seed = 1);
 

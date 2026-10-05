@@ -14,7 +14,6 @@
 #pragma once
 
 #include "../../src/dag/dag.hpp"
-#include "../../src/profile/calibration.hpp"
 
 #include <vector>
 
@@ -77,67 +76,6 @@ inline Dag build_topcuoglu_dag() {
     dag.add_edge(6, 9, 17);
     dag.add_edge(7, 9, 11);
     dag.add_edge(8, 9, 13);
-
-    return dag;
-}
-
-// Same task graph and topology as build_topcuoglu_dag() (same preds, same
-// kernel-type tag per task, same edges), but Task::cost comes from a
-// real measured src/profile/calibration.hpp sigma table instead of the
-// paper's arbitrary units -- so a scheduler's predicted makespan and a
-// Dispatcher's measured makespan are finally in the same unit (seconds).
-//
-// Edge communication costs are left at 0: this project has no component
-// that measures real inter-task data-movement cost (src/profile/ only
-// calibrates kernel execution time), so modeling a nonzero comm cost here
-// would be fabricated, not calibrated. HEFT's rank_u and EFT math still
-// run correctly with zero-cost edges; it just means this fixture's
-// predicted schedule never credits same-processor placement for avoiding
-// a communication cost that was never measured in the first place.
-//
-// `profile` must have been calibrated with num_processors >= 3 (this
-// fixture's task count/topology, like build_topcuoglu_dag(), assumes 3
-// processors).
-inline Dag build_topcuoglu_dag_calibrated(const profile::CalibrationProfile& profile) {
-    Dag dag;
-    const std::size_t p = profile.num_processors;
-
-    auto add = [&](int id, std::vector<int> preds) {
-        Task t;
-        t.id = id;
-        t.preds = std::move(preds);
-        t.kernel = (id % 2 == 0) ? KernelType::COMPUTE_BOUND : KernelType::MEMORY_BOUND;
-        t.cost.resize(p);
-        for (std::size_t proc = 0; proc < p; ++proc) t.cost[proc] = profile.cost(t.kernel, proc);
-        dag.add_task(std::move(t));
-    };
-
-    add(0, {});
-    add(1, {0});
-    add(2, {0});
-    add(3, {0});
-    add(4, {0});
-    add(5, {0});
-    add(6, {2});
-    add(7, {1, 3, 5});
-    add(8, {1, 3, 4});
-    add(9, {6, 7, 8});
-
-    dag.add_edge(0, 1, 0.0);
-    dag.add_edge(0, 2, 0.0);
-    dag.add_edge(0, 3, 0.0);
-    dag.add_edge(0, 4, 0.0);
-    dag.add_edge(0, 5, 0.0);
-    dag.add_edge(1, 7, 0.0);
-    dag.add_edge(1, 8, 0.0);
-    dag.add_edge(2, 6, 0.0);
-    dag.add_edge(3, 7, 0.0);
-    dag.add_edge(3, 8, 0.0);
-    dag.add_edge(4, 8, 0.0);
-    dag.add_edge(5, 7, 0.0);
-    dag.add_edge(6, 9, 0.0);
-    dag.add_edge(7, 9, 0.0);
-    dag.add_edge(8, 9, 0.0);
 
     return dag;
 }
