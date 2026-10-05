@@ -1,32 +1,38 @@
 // tests/fixtures/topcuoglu_calibrated.cpp
 //
-// The unit-matched counterpart to topcuoglu_exec.cpp: calibrates sigma
-// (src/profile/calibration.hpp) from real measured kernel passes on this
-// machine, then runs eheft (src/sched/eheft.hpp -- HEFT with Task::cost
-// substituted from sigma instead of the paper's arbitrary table) and
-// naive (against the same calibrated costs) on the paper's Fig. 1
-// topology, executes each resulting schedule for real on pinned threads,
-// and prints predicted-vs-measured error -- this time both numbers are
-// genuinely in seconds, so error% is a real prediction error, not just a
-// same-DAG relative comparison (contrast with topcuoglu_exec.cpp's
-// printed caveat).
+// The unit-matched counterpart to topcuoglu_exec.cpp: calibrates
+// sigma/pi/comm (src/profile/calibration.hpp) from real measured kernel
+// passes on this machine, then runs eheft (src/sched/eheft.hpp -- HEFT
+// with Task::cost substituted from sigma), cheft (src/sched/cheft.hpp --
+// eheft plus contention-aware EFT insertion), and naive (against the
+// same calibrated costs) on the paper's Fig. 1 topology, executes each
+// resulting schedule for real on pinned threads, and prints
+// predicted-vs-measured error -- both numbers are genuinely in seconds,
+// so error% is a real prediction error, not just a same-DAG relative
+// comparison (contrast with topcuoglu_exec.cpp's printed caveat).
 //
-// Also prints the extracted pi (contended/solo) table: diagnostic only
-// for now -- src/sched/cheft.hpp (the scheduler meant to consume it)
-// doesn't exist yet.
+// Does NOT assert cheft's error is smaller than eheft's: real contention
+// magnitude is workload/hardware dependent -- that comparison is printed
+// as observed data here, not a hard pass/fail (see
+// tests/fixtures/cheft.cpp for the deterministic, hand-verified proof
+// that the contention-aware insertion logic itself is correct).
 //
 // Build:  g++ -std=c++17 -O2 -pthread -Wall -Wextra -Isrc -o
 //         tests/fixtures/topcuoglu_calibrated
 //         tests/fixtures/topcuoglu_calibrated.cpp
 //         src/dag/dag.cpp src/sched/heft.cpp src/sched/naive.cpp
-//         src/sched/eheft.cpp src/kernels/kernel.cpp src/exec/affinity.cpp
-//         src/exec/event_log.cpp src/exec/dispatcher.cpp
+//         src/sched/eheft.cpp src/sched/cheft.cpp src/kernels/kernel.cpp
+//         src/exec/affinity.cpp src/exec/event_log.cpp
+//         src/exec/heartbeat.cpp src/exec/dispatcher.cpp
+//         src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp
 //         src/profile/pressure.cpp src/profile/probe.cpp
-//         src/profile/calibration.cpp src/profile/calibrate_sweep.cpp
+//         src/profile/comm_probe.cpp src/profile/calibration.cpp
+//         src/profile/calibrate_sweep.cpp
 // Run:    ./tests/fixtures/topcuoglu_calibrated
 
 #include "../../src/exec/dispatcher.hpp"
 #include "../../src/profile/calibration.hpp"
+#include "../../src/sched/cheft.hpp"
 #include "../../src/sched/eheft.hpp"
 #include "../../src/sched/naive.hpp"
 #include "../../src/sched/scheduler.hpp"
@@ -85,6 +91,7 @@ int main() {
 
     std::vector<std::unique_ptr<Scheduler>> schedulers;
     schedulers.push_back(std::make_unique<EheftScheduler>(profile));
+    schedulers.push_back(std::make_unique<CheftScheduler>(profile));
     schedulers.push_back(std::make_unique<NaiveScheduler>());
 
     mkdir("out", 0755);  // ignore EEXIST -- fine if it's already there
@@ -124,15 +131,18 @@ int main() {
                      r.throughput);
     }
     std::printf(
-        "\nNOTE: both columns are seconds, calibrated from this machine's real\n"
-        "measured solo kernel passes (sigma) and cross-processor handoff\n"
-        "latency (comm, printed above as a single mean -- see\n"
-        "src/sched/eheft.hpp's calibrate_costs() comment on why one scalar,\n"
-        "not a per-pair matrix) -- error%% above is a genuine predicted-vs-\n"
-        "measured error, unlike topcuoglu_exec.cpp's paper-table comparison.\n"
-        "sigma is a *solo* cost; it does not account for the contention the\n"
-        "pi table above quantifies, which is exactly the error this project\n"
-        "measures -- see CLAUDE.md.\n");
+        "\nNOTE: all columns are seconds, calibrated from this machine's real\n"
+        "measured solo kernel passes (sigma), pairwise contention ratios (pi),\n"
+        "and cross-processor handoff latency (comm, printed above as a single\n"
+        "mean -- see src/sched/eheft.hpp's calibrate_costs() comment on why\n"
+        "one scalar, not a per-pair matrix). error%% above is a genuine\n"
+        "predicted-vs-measured error, unlike topcuoglu_exec.cpp's paper-table\n"
+        "comparison. eheft is contention-oblivious (sigma only); cheft\n"
+        "(src/sched/cheft.hpp) additionally inflates EFT insertion by pi where\n"
+        "placements tentatively overlap -- whether cheft's error%% is actually\n"
+        "smaller here depends on how much real contention this machine's\n"
+        "kernels show (see the pi table above), which is exactly the thing\n"
+        "this project measures, not something guaranteed -- see CLAUDE.md.\n");
 
     return 0;
 }

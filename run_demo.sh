@@ -49,7 +49,7 @@ fi
 header "BUILD: cleaning and compiling everything from scratch"
 
 rm -f contention_pilot
-rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated tests/fixtures/profile_calibration tests/fixtures/eheft tests/fixtures/generators
+rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated tests/fixtures/profile_calibration tests/fixtures/eheft tests/fixtures/generators tests/fixtures/cheft
 rm -f tests/fixtures/*.exe
 rm -rf out
 
@@ -83,7 +83,7 @@ $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_ft \
 echo "-- tests/fixtures/topcuoglu_calibrated (sigma/pi calibration, unit-matched error%)"
 $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_calibrated \
     tests/fixtures/topcuoglu_calibrated.cpp \
-    src/dag/dag.cpp src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp \
+    src/dag/dag.cpp src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp src/sched/cheft.cpp \
     src/kernels/kernel.cpp src/exec/affinity.cpp src/exec/event_log.cpp \
     src/exec/heartbeat.cpp src/exec/dispatcher.cpp \
     src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp \
@@ -93,6 +93,11 @@ $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/topcuoglu_calibrated \
 echo "-- tests/fixtures/eheft (empirical-HEFT regression)"
 $CXX $CXXFLAGS -o tests/fixtures/eheft \
     tests/fixtures/eheft.cpp src/dag/dag.cpp src/sched/heft.cpp src/sched/eheft.cpp \
+    src/profile/calibration.cpp
+
+echo "-- tests/fixtures/cheft (contention-aware-HEFT regression)"
+$CXX $CXXFLAGS -o tests/fixtures/cheft \
+    tests/fixtures/cheft.cpp src/dag/dag.cpp src/sched/heft.cpp src/sched/eheft.cpp src/sched/cheft.cpp \
     src/profile/calibration.cpp
 
 echo "-- tests/fixtures/profile_calibration (src/profile/ structural regression)"
@@ -115,7 +120,7 @@ $RUN ./contention_pilot 10
 
 # ------------------------------------------------------------- stage 2
 
-header "STAGE 2/6: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft)"
+header "STAGE 2/6: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft + cheft)"
 if $RUN ./tests/fixtures/topcuoglu; then
     echo "RESULT: PASS -- HEFT matches the published paper's ranks/schedule/makespan"
 else
@@ -127,6 +132,13 @@ if $RUN ./tests/fixtures/eheft; then
     echo "RESULT: PASS -- eheft calibration substitution + schedule match hand-computed fixture"
 else
     echo "RESULT: FAIL -- eheft disagrees with hand-computed fixture"
+    exit 1
+fi
+echo
+if $RUN ./tests/fixtures/cheft; then
+    echo "RESULT: PASS -- cheft contention-aware EFT insertion matches hand-computed fixture"
+else
+    echo "RESULT: FAIL -- cheft disagrees with hand-computed fixture"
     exit 1
 fi
 echo
