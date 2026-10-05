@@ -85,9 +85,63 @@ logged. tests/fixtures/topcuoglu_ft covers the completion-vs-failure
 CAS race (dispatcher.hpp hazards #9-#11), stress-tested 45+ runs
 across every task id including the entry task, no flakes.
 
-Next: Phase 11 (src/sched/cheft -- contention-aware scheduler consuming
-sigma/pi, meant to beat eheft's predicted-vs-measured error on the same
-workload) and Phase 13/14 (benchmark harness running naive/heft/eheft/
-cheft across many generated DAGs into a machine-readable results log,
-plus analysis/ turning that into the paper's plots/tables) -- none of
-these exist yet.
+Phase 11 (src/sched/cheft -- contention-aware HEFT, the project's actual
+research contribution): landed. Priority ordering (rank_u) uses the same
+calibrated-but-contention-oblivious costs eheft does (no principled
+contention estimate exists before any task is placed); the correction
+happens only at EFT insertion -- for each candidate processor, a task's
+base (sigma) duration is inflated by the worst measured pi multiplier
+against whatever already-placed tasks on OTHER processors tentatively
+overlap its window, and the processor with the smallest *inflated*
+finish time wins. heft.cpp is not modified -- cheft.cpp duplicates its
+small find_earliest_slot() gap-finder rather than touching the reference
+implementation. Documented approximations (cheft.hpp's header comment):
+only already-placed tasks are visible at decision time (same greedy
+limitation HEFT's own EFT already has for cost); pi is only ever
+measured pairwise, so N-way overlap takes the *maximum* pairwise pi as a
+conservative estimate; an inflated window is never re-checked against
+later timeline entries on its own processor. tests/fixtures/cheft.cpp:
+19 hand-computed checks on a deterministic synthetic profile, proving
+the contention-aware insertion logic is correct and that it avoids a
+naive-parallel placement eheft would pick when real contention would
+make it worse. tests/fixtures/topcuoglu_calibrated.cpp prints cheft
+alongside eheft/naive as a third row (real measured data, no hard
+pass/fail assertion there -- real contention magnitude is
+workload/hardware dependent, which is exactly what this project
+measures).
+
+Phase 13+14 (benchmark harness + analysis/): landed. benchmark_suite.cpp
+(repo root, alongside contention_pilot.cpp -- an experiment, not a
+regression test) calibrates once, runs {naive, eheft, cheft} against a
+5-DAG corpus (src/dag/generators.hpp: narrow/deep, wide/shallow,
+balanced, sparse, dense) executed for real, and appends every
+(dag, scheduler) result to out/results.csv via the new
+src/exec/results_log.{hpp,cpp} (append-only, same discipline as
+src/exec/event_log.hpp, one row per run). analysis/{common,tables,
+plots}.py (pure stdlib -- no pip/network access in this environment to
+install matplotlib/pandas) read that CSV: tables.py prints a
+per-scheduler mean/median/min/max error% summary; plots.py writes a
+hand-rolled SVG bar chart (analysis/out/error_pct.svg). run_demo.sh
+stage 7 runs the full sweep + both analysis scripts (python3 optional,
+skipped gracefully if absent).
+
+All 7 stages verified end-to-end via WSL in one untimed run: 11
+binaries build clean; 879 regression checks pass across topcuoglu (57),
+eheft (25), cheft (19), profile_calibration (33), generators (745);
+topcuoglu_ft fault-injection demo passes; the 5-DAG benchmark sweep
+writes 15 rows and both analysis scripts run against them successfully.
+cheft vs eheft's relative error on that particular run (cheft worse,
+34.5% vs 20.5% mean |error|) differs from an earlier standalone run
+(cheft better, 33.8% vs 41.5%) -- expected run-to-run variance on a
+5-DAG sample on a noisy WSL2 VM, not a bug; a larger, more controlled
+corpus would be needed before drawing a real conclusion about whether
+cheft's correction helps on average, which is honestly exactly the
+open question this project exists to answer, not something this
+session's small demo sweep can settle.
+
+Nothing further scoped yet -- every component named in this file's
+Layout section now exists. Natural next steps (not started): a larger,
+statistically meaningful benchmark corpus; per-pair (not mean) comm
+cost in the EFT model; N-way (not worst-pairwise) contention modeling;
+a written report assembling analysis/'s output into the paper's actual
+findings.

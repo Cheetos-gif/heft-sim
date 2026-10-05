@@ -48,13 +48,23 @@ fi
 
 header "BUILD: cleaning and compiling everything from scratch"
 
-rm -f contention_pilot
+rm -f contention_pilot benchmark_suite
 rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated tests/fixtures/profile_calibration tests/fixtures/eheft tests/fixtures/generators tests/fixtures/cheft
 rm -f tests/fixtures/*.exe
 rm -rf out
 
 echo "-- contention_pilot"
 $CXX $CXXFLAGS_PTHREAD -o contention_pilot contention_pilot.cpp
+
+echo "-- benchmark_suite (multi-DAG naive/eheft/cheft sweep -> out/results.csv)"
+$CXX $CXXFLAGS_PTHREAD -o benchmark_suite benchmark_suite.cpp \
+    src/dag/dag.cpp src/dag/generators.cpp \
+    src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp src/sched/cheft.cpp \
+    src/kernels/kernel.cpp src/exec/affinity.cpp src/exec/event_log.cpp src/exec/results_log.cpp \
+    src/exec/heartbeat.cpp src/exec/dispatcher.cpp \
+    src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp \
+    src/profile/pressure.cpp src/profile/probe.cpp src/profile/comm_probe.cpp \
+    src/profile/calibration.cpp src/profile/calibrate_sweep.cpp
 
 echo "-- tests/fixtures/topcuoglu (HEFT paper-fixture regression)"
 $CXX $CXXFLAGS -o tests/fixtures/topcuoglu \
@@ -115,12 +125,12 @@ echo "build OK"
 
 # ------------------------------------------------------------- stage 1
 
-header "STAGE 1/6: contention pilot (10 reps) -- does contention exist at all?"
+header "STAGE 1/7: contention pilot (10 reps) -- does contention exist at all?"
 $RUN ./contention_pilot 10
 
 # ------------------------------------------------------------- stage 2
 
-header "STAGE 2/6: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft + cheft)"
+header "STAGE 2/7: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft + cheft)"
 if $RUN ./tests/fixtures/topcuoglu; then
     echo "RESULT: PASS -- HEFT matches the published paper's ranks/schedule/makespan"
 else
@@ -165,10 +175,10 @@ fi
 # not two separate runs (packaging only -- this script does not split or
 # alter what that binary computes or prints).
 
-header "STAGE 3/6: naive vs HEFT -- predicted makespan for both"
+header "STAGE 3/7: naive vs HEFT -- predicted makespan for both"
 echo "(predicted numbers appear in the 'predicted' column of the table below)"
 
-header "STAGE 4/6: real-thread execution -- measured makespan"
+header "STAGE 4/7: real-thread execution -- measured makespan"
 echo "(same run as stage 3; 'measured(s)' column below is real pinned-thread execution)"
 echo
 echo "NOTE: predicted is in paper cost-units, measured is in seconds;"
@@ -178,7 +188,7 @@ $RUN ./tests/fixtures/topcuoglu_exec
 
 # ------------------------------------------------------------- stage 5
 
-header "STAGE 5/6: fault injection -- kill, FAILURE_DETECTED, recovery"
+header "STAGE 5/7: fault injection -- kill, FAILURE_DETECTED, recovery"
 ft_rc=0
 ft_output="$($RUN ./tests/fixtures/topcuoglu_ft)" || ft_rc=$?
 echo "$ft_output"
@@ -202,7 +212,20 @@ echo "FT demo checks: PASS"
 
 # ------------------------------------------------------------- stage 6
 
-header "STAGE 6/6: sigma/pi calibration -- unit-matched predicted-vs-measured error"
+header "STAGE 6/7: sigma/pi calibration -- unit-matched predicted-vs-measured error"
 $RUN ./tests/fixtures/topcuoglu_calibrated
+
+# ------------------------------------------------------------- stage 7
+
+header "STAGE 7/7: multi-DAG benchmark sweep (naive/eheft/cheft) -> out/results.csv + analysis/"
+$RUN ./benchmark_suite
+echo
+if command -v python3 >/dev/null 2>&1; then
+    python3 analysis/tables.py
+    echo
+    python3 analysis/plots.py
+else
+    echo "(skipping analysis/ -- python3 not found; out/results.csv is still written above)"
+fi
 
 header "DEMO COMPLETE"

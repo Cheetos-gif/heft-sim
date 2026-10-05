@@ -1,0 +1,16 @@
+dag_id,num_tasks,num_processors,scheduler,predicted_sec,measured_sec,error_pct,throughput
+narrow_deep,8,3,naive,1.55908,1.51302,-2.95423,5.28744
+narrow_deep,8,3,eheft,1.41835,1.64228,15.7882,4.87129
+narrow_deep,8,3,cheft,1.41835,1.495,5.40433,5.35118
+wide_shallow,12,3,naive,0.982032,1.15525,17.639,10.3873
+wide_shallow,12,3,eheft,0.908086,1.32971,46.4296,9.02455
+wide_shallow,12,3,cheft,1.0566,1.4137,33.7966,8.48838
+balanced,10,3,naive,1.13152,1.17338,3.6992,8.52238
+balanced,10,3,eheft,1.10896,1.21644,9.69174,8.22073
+balanced,10,3,cheft,1.10896,1.70426,53.6813,5.86764
+sparse,10,3,naive,0.982032,1.18732,20.9042,8.42234
+sparse,10,3,eheft,0.922949,1.11488,20.7955,8.96957
+sparse,10,3,cheft,1.07406,1.61158,50.0462,6.20509
+dense,10,3,naive,1.13152,1.18907,5.08583,8.40993
+dense,10,3,eheft,1.11599,1.22272,9.56392,8.17849
+dense,10,3,cheft,1.14929,1.49067,29.7036,6.70839
