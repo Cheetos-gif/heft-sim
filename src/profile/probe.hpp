@@ -16,6 +16,7 @@
 
 #include "../kernels/kernel.hpp"
 
+#include <utility>
 #include <vector>
 
 namespace heftsim::profile {
@@ -41,5 +42,16 @@ ProbeResult measure_solo(KernelType kernel, int core, const KernelConfig& cfg, i
 // fail-loudly-on-malformed-input discipline src/dag/dag.cpp uses.
 ProbeResult measure_contended(KernelType reporter, int coreA, KernelType interferer, int coreB,
                                const KernelConfig& cfg, int reps, unsigned seed = 1);
+
+// Generalizes measure_contended to more than one simultaneous
+// interferer: `interferers` is a list of (kernel, core) pairs, each
+// started as its own src/profile/pressure.hpp background loop before
+// the reporter's timed pass begins, all kept running for the reporter's
+// entire measured window. Every core (reporter's and every interferer's)
+// must be distinct -- throws std::invalid_argument otherwise. An empty
+// `interferers` list is equivalent to measure_solo (0-way "contention").
+ProbeResult measure_contended_multi(KernelType reporter, int reporter_core,
+                                     const std::vector<std::pair<KernelType, int>>& interferers,
+                                     const KernelConfig& cfg, int reps, unsigned seed = 1);
 
 }  // namespace heftsim::profile

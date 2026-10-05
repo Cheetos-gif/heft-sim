@@ -27,6 +27,18 @@ class Result:
     error_pct: float
     throughput: float
 
+    @property
+    def shape(self) -> str:
+        """dag_id with a trailing '_sN' seed-replicate suffix stripped,
+        e.g. 'balanced_s2' -> 'balanced'. benchmark_suite.cpp names each
+        of its 3 seed replicates per shape this way; dag_ids without such
+        a suffix (e.g. a one-off manual run) are returned unchanged."""
+        if "_s" in self.dag_id:
+            prefix, _, suffix = self.dag_id.rpartition("_s")
+            if suffix.isdigit():
+                return prefix
+        return self.dag_id
+
 
 def load_results(path: str | Path) -> list[Result]:
     rows: list[Result] = []
@@ -52,4 +64,11 @@ def group_by_scheduler(rows: list[Result]) -> dict[str, list[Result]]:
     out: dict[str, list[Result]] = {}
     for r in rows:
         out.setdefault(r.scheduler, []).append(r)
+    return out
+
+
+def group_by_shape_and_scheduler(rows: list[Result]) -> dict[tuple[str, str], list[Result]]:
+    out: dict[tuple[str, str], list[Result]] = {}
+    for r in rows:
+        out.setdefault((r.shape, r.scheduler), []).append(r)
     return out

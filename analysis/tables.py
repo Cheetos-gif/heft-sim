@@ -17,7 +17,7 @@ from __future__ import annotations
 import statistics
 import sys
 
-from common import group_by_scheduler, load_results
+from common import group_by_scheduler, group_by_shape_and_scheduler, load_results
 
 
 def main() -> None:
@@ -46,6 +46,45 @@ def main() -> None:
             f"{statistics.median(errs):>12.1f} {min(errs):>10.1f} {max(errs):>10.1f} "
             f"{statistics.mean(abs_errs):>12.1f}"
         )
+
+    by_shape_sched = group_by_shape_and_scheduler(rows)
+    shapes = sorted({r.shape for r in rows})
+    schedulers = sorted({r.scheduler for r in rows})
+
+    print()
+    print("Per-shape mean |error|% (averaged across seed replicates within each shape):")
+    header = f"{'shape':<16}" + "".join(f"{s:>12}" for s in schedulers)
+    print(header)
+    print("-" * len(header))
+    for shape in shapes:
+        cells = []
+        for sched in schedulers:
+            group = by_shape_sched.get((shape, sched), [])
+            mean_abs = statistics.mean(abs(r.error_pct) for r in group) if group else float("nan")
+            cells.append(f"{mean_abs:>12.1f}")
+        print(f"{shape:<16}" + "".join(cells))
+
+    # Head-to-head: on how many shapes does cheft's mean |error| beat
+    # eheft's? (Not asserted anywhere as a pass/fail -- see
+    # tests/fixtures/cheft.cpp's header comment on why that would be
+    # flaky; this is purely descriptive.)
+    if "cheft" in schedulers and "eheft" in schedulers:
+        cheft_wins = 0
+        eheft_wins = 0
+        for shape in shapes:
+            cheft_group = by_shape_sched.get((shape, "cheft"), [])
+            eheft_group = by_shape_sched.get((shape, "eheft"), [])
+            if not cheft_group or not eheft_group:
+                continue
+            cheft_mean = statistics.mean(abs(r.error_pct) for r in cheft_group)
+            eheft_mean = statistics.mean(abs(r.error_pct) for r in eheft_group)
+            if cheft_mean < eheft_mean:
+                cheft_wins += 1
+            elif eheft_mean < cheft_mean:
+                eheft_wins += 1
+        print()
+        print(f"cheft vs eheft, mean |error|% lower on: cheft {cheft_wins}/{len(shapes)} shapes, "
+              f"eheft {eheft_wins}/{len(shapes)} shapes")
 
     print()
     print("Per-run detail:")

@@ -25,13 +25,21 @@ SCHED_COLOR = {
 }
 
 
-def svg_bar_chart(rows, width: int = 900, height: int = 440) -> str:
-    margin_left, margin_bottom, margin_top = 50, 90, 40
-    plot_w = width - margin_left - 20
-    plot_h = height - margin_bottom - margin_top
-
+def svg_bar_chart(rows, width: int | None = None, height: int = 480) -> str:
     dag_ids = sorted({r.dag_id for r in rows})
     schedulers = sorted({r.scheduler for r in rows}, key=lambda s: {"naive": 0, "eheft": 1, "cheft": 2}.get(s, 9))
+
+    # Scale width with the number of DAG groups so bars/labels never
+    # get crowded regardless of corpus size -- fixed 900px was fine for
+    # 5 DAGs but overlapped badly once benchmark_suite.cpp grew to 15
+    # (5 shapes x 3 seed replicates).
+    min_group_w = 55
+    if width is None:
+        width = max(900, 70 + len(dag_ids) * min_group_w)
+
+    margin_left, margin_bottom, margin_top = 50, 130, 40
+    plot_w = width - margin_left - 20
+    plot_h = height - margin_bottom - margin_top
 
     max_abs_err = max((abs(r.error_pct) for r in rows), default=1.0) or 1.0
     zero_y = margin_top + plot_h / 2
@@ -51,8 +59,14 @@ def svg_bar_chart(rows, width: int = 900, height: int = 440) -> str:
 
     for gi, dag_id in enumerate(dag_ids):
         gx = margin_left + gi * group_w
+        label_x = gx + group_w / 2
+        label_y = height - margin_bottom + 15
+        # Rotated labels: with up to 15 groups, horizontal text at any
+        # reasonable font size overlaps its neighbors; -60 degrees gives
+        # each label its own diagonal lane down to the bottom margin.
         parts.append(
-            f'<text x="{gx + group_w / 2:.1f}" y="{height - margin_bottom + 20}" text-anchor="middle">{dag_id}</text>'
+            f'<text x="{label_x:.1f}" y="{label_y:.1f}" text-anchor="end" font-size="10" '
+            f'transform="rotate(-60 {label_x:.1f} {label_y:.1f})">{dag_id}</text>'
         )
         for si, sched in enumerate(schedulers):
             match = [r for r in rows if r.dag_id == dag_id and r.scheduler == sched]
@@ -65,9 +79,9 @@ def svg_bar_chart(rows, width: int = 900, height: int = 440) -> str:
             color = SCHED_COLOR.get(sched, "#333333")
             parts.append(f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w * 0.8:.1f}" height="{bar_h:.1f}" '
                          f'fill="{color}"/>')
-            label_y = (by - 3) if err >= 0 else (by + bar_h + 12)
+            val_label_y = (by - 3) if err >= 0 else (by + bar_h + 12)
             parts.append(
-                f'<text x="{bx + bar_w * 0.4:.1f}" y="{label_y:.1f}" text-anchor="middle" font-size="9">'
+                f'<text x="{bx + bar_w * 0.4:.1f}" y="{val_label_y:.1f}" text-anchor="middle" font-size="9">'
                 f'{err:.0f}%</text>'
             )
 

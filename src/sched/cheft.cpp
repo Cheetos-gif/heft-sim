@@ -25,24 +25,49 @@ double find_earliest_slot(const std::vector<ScheduleEntry>& timeline, double rea
     return candidate;
 }
 
-// Worst-case (maximum) pairwise pi multiplier for `kernel` against every
-// already-placed task tentatively overlapping [start, finish) on any
-// processor other than exclude_proc. 1.0 (no inflation) if nothing
-// overlaps -- see cheft.hpp on why "worst pairwise" instead of a
-// validated N-way model.
+// Contention multiplier for `kernel` against whatever already-placed
+// tasks tentatively overlap [start, finish) on any processor other than
+// exclude_proc:
+//   0 overlapping co-runners -> 1.0 (no inflation).
+//   1 overlapping co-runner  -> measured pairwise cal.pi[kernel][co_kernel].
+//   2 overlapping co-runners -> measured 3-way cal.pi3[kernel][combo] --
+//     a genuine N-way measurement (src/profile/comm_probe.hpp's sibling,
+//     src/profile/probe.hpp::measure_contended_multi), not an
+//     approximation, for exactly the case that matters at
+//     num_processors == 3 (the demo/benchmark default): the candidate's
+//     two OTHER processors can together hold at most two overlapping
+//     tasks.
+//   >= 3 overlapping co-runners -> no direct measurement exists past
+//     3-way; falls back to the maximum pairwise pi among all overlapping
+//     co-runners as a conservative estimate (only reachable with
+//     num_processors >= 5, not exercised by this project's current
+//     fixtures/benchmarks, but handled so the function stays correct
+//     for larger processor counts instead of silently under-counting).
 double contention_multiplier(KernelType kernel, double start, double finish, int exclude_proc,
                               const Dag& topology, const std::vector<std::vector<ScheduleEntry>>& proc_timeline,
                               const profile::CalibrationProfile& cal) {
-    double worst = 1.0;
+    std::vector<KernelType> co_kernels;
     for (std::size_t q = 0; q < proc_timeline.size(); ++q) {
         if (static_cast<int>(q) == exclude_proc) continue;
         for (const auto& e : proc_timeline[q]) {
             bool overlaps = e.start < finish && start < e.finish;
-            if (!overlaps) continue;
-            KernelType co_kernel = topology.task(e.task).kernel;
-            double pi = cal.pi[profile::kernel_index(kernel)][profile::kernel_index(co_kernel)];
-            worst = std::max(worst, pi);
+            if (overlaps) co_kernels.push_back(topology.task(e.task).kernel);
         }
+    }
+
+    std::size_t ki = profile::kernel_index(kernel);
+    if (co_kernels.empty()) {
+        return 1.0;
+    }
+    if (co_kernels.size() == 1) {
+        return cal.pi[ki][profile::kernel_index(co_kernels[0])];
+    }
+    if (co_kernels.size() == 2) {
+        return cal.pi3[ki][profile::combo_index(co_kernels[0], co_kernels[1])];
+    }
+    double worst = 1.0;
+    for (KernelType co : co_kernels) {
+        worst = std::max(worst, cal.pi[ki][profile::kernel_index(co)]);
     }
     return worst;
 }
@@ -68,7 +93,6 @@ HeftResult cheft_schedule(const Dag& topology, const profile::CalibrationProfile
         return a < b;
     });
 
-    const double comm = profile.mean_comm_cost();
     std::vector<std::vector<ScheduleEntry>> proc_timeline(p);
     std::vector<ScheduleEntry> assigned(n);
 
@@ -83,7 +107,14 @@ HeftResult cheft_schedule(const Dag& topology, const profile::CalibrationProfile
             double ready = 0.0;
             for (int pred : task.preds) {
                 const ScheduleEntry& pe = assigned[pred];
-                double c = (pe.processor == static_cast<int>(proc)) ? 0.0 : comm;
+                // Per-processor-pair comm cost, not heft.cpp's flat
+                // per-edge scalar -- cheft's own insertion loop isn't
+                // constrained by Dag's one-cost-per-edge representation
+                // (see cheft.hpp's header comment and
+                // profile::CalibrationProfile::comm's doc).
+                double c = (pe.processor == static_cast<int>(proc))
+                               ? 0.0
+                               : profile.comm_cost(static_cast<std::size_t>(pe.processor), proc);
                 ready = std::max(ready, pe.finish + c);
             }
 

@@ -11,14 +11,15 @@
 // experiment, not a pass/fail check.
 //
 // Runs {naive, eheft, cheft} (src/sched/{naive,eheft,cheft}.hpp) against
-// a small corpus of generated DAGs (src/dag/generators.hpp), each
-// executed for real on pinned threads (src/exec/dispatcher.hpp). Raw
-// (uncalibrated) heft is deliberately excluded -- see
-// tests/fixtures/topcuoglu_calibrated.cpp's own precedent: a
-// predicted-vs-measured comparison is only meaningful once costs are in
-// real seconds (calibrated); heft_schedule() against a generator's
-// synthetic Task::cost table would be the same kind of arbitrary-unit
-// comparison topcuoglu_exec.cpp already documents as uncalibrated.
+// a corpus of generated DAGs (src/dag/generators.hpp, 5 shapes x 3 seed
+// replicates each = 15 DAGs), each executed for real on pinned threads
+// (src/exec/dispatcher.hpp). Raw (uncalibrated) heft is deliberately
+// excluded -- see tests/fixtures/topcuoglu_calibrated.cpp's own
+// precedent: a predicted-vs-measured comparison is only meaningful once
+// costs are in real seconds (calibrated); heft_schedule() against a
+// generator's synthetic Task::cost table would be the same kind of
+// arbitrary-unit comparison topcuoglu_exec.cpp already documents as
+// uncalibrated.
 //
 // Build: g++ -std=c++17 -O2 -pthread -Wall -Wextra -Isrc -o
 //        benchmark_suite benchmark_suite.cpp
@@ -58,52 +59,48 @@ struct DagSpec {
 };
 
 // A small, deliberately varied corpus: narrow/deep, wide/shallow,
-// balanced, sparse, and densely-connected -- enough shape variety to see
-// whether cheft's correction helps consistently or only in some
-// topologies, without this sweep taking many minutes (each DAG is
-// executed for real, three times, once per scheduler).
+// balanced, sparse, and densely-connected shapes, each replicated across
+// 3 seeds -- enough shape variety *and* enough repeats per shape to see
+// whether cheft's correction helps consistently within a shape (not just
+// on one lucky/unlucky random draw) or only sometimes, without this
+// sweep taking many minutes (each of the resulting 15 DAGs is executed
+// for real, three times, once per scheduler -- 45 real dispatcher runs
+// total).
 std::vector<DagSpec> build_corpus(int num_processors) {
+    struct Shape {
+        std::string name;
+        int num_layers;
+        int min_tasks;
+        int max_tasks;
+        double edge_probability;
+        unsigned base_seed;
+    };
+
+    std::vector<Shape> shapes = {
+        {"narrow_deep", 6, 1, 2, 0.7, 101},
+        {"wide_shallow", 2, 5, 6, 0.5, 102},
+        {"balanced", 4, 2, 3, 0.5, 103},
+        {"sparse", 4, 2, 3, 0.15, 104},
+        {"dense", 4, 2, 3, 0.9, 105},
+    };
+
+    constexpr int kReplicatesPerShape = 3;
+
     std::vector<DagSpec> specs;
+    for (const auto& shape : shapes) {
+        GeneratorConfig cfg;
+        cfg.num_layers = shape.num_layers;
+        cfg.min_tasks_per_layer = shape.min_tasks;
+        cfg.max_tasks_per_layer = shape.max_tasks;
+        cfg.edge_probability = shape.edge_probability;
+        cfg.num_processors = num_processors;
 
-    GeneratorConfig narrow_deep;
-    narrow_deep.num_layers = 6;
-    narrow_deep.min_tasks_per_layer = 1;
-    narrow_deep.max_tasks_per_layer = 2;
-    narrow_deep.edge_probability = 0.7;
-    narrow_deep.num_processors = num_processors;
-    specs.push_back({"narrow_deep", narrow_deep, 101});
-
-    GeneratorConfig wide_shallow;
-    wide_shallow.num_layers = 2;
-    wide_shallow.min_tasks_per_layer = 5;
-    wide_shallow.max_tasks_per_layer = 6;
-    wide_shallow.edge_probability = 0.5;
-    wide_shallow.num_processors = num_processors;
-    specs.push_back({"wide_shallow", wide_shallow, 102});
-
-    GeneratorConfig balanced;
-    balanced.num_layers = 4;
-    balanced.min_tasks_per_layer = 2;
-    balanced.max_tasks_per_layer = 3;
-    balanced.edge_probability = 0.5;
-    balanced.num_processors = num_processors;
-    specs.push_back({"balanced", balanced, 103});
-
-    GeneratorConfig sparse;
-    sparse.num_layers = 4;
-    sparse.min_tasks_per_layer = 2;
-    sparse.max_tasks_per_layer = 3;
-    sparse.edge_probability = 0.15;
-    sparse.num_processors = num_processors;
-    specs.push_back({"sparse", sparse, 104});
-
-    GeneratorConfig dense;
-    dense.num_layers = 4;
-    dense.min_tasks_per_layer = 2;
-    dense.max_tasks_per_layer = 3;
-    dense.edge_probability = 0.9;
-    dense.num_processors = num_processors;
-    specs.push_back({"dense", dense, 105});
+        for (int rep = 0; rep < kReplicatesPerShape; ++rep) {
+            unsigned seed = shape.base_seed + static_cast<unsigned>(rep) * 1000u;
+            std::string id = shape.name + "_s" + std::to_string(rep + 1);
+            specs.push_back({id, cfg, seed});
+        }
+    }
 
     return specs;
 }

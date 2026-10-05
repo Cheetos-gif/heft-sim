@@ -55,6 +55,32 @@ CalibrationProfile calibrate(std::size_t num_processors, const KernelConfig& cfg
         }
     }
 
+    bool have_triple = hc >= 3;
+    const int coreC = 2;
+    static constexpr std::array<std::array<KernelType, 2>, kNumInterfererCombos> kCombos = {{
+        {KernelType::COMPUTE_BOUND, KernelType::COMPUTE_BOUND},
+        {KernelType::COMPUTE_BOUND, KernelType::MEMORY_BOUND},
+        {KernelType::MEMORY_BOUND, KernelType::MEMORY_BOUND},
+    }};
+
+    for (std::size_t ri = 0; ri < kNumKernels; ++ri) {
+        for (std::size_t c = 0; c < kNumInterfererCombos; ++c) {
+            if (!have_triple) {
+                profile.pi3[ri][c] = 1.0;
+                continue;
+            }
+            KernelType ka = kCombos[c][0];
+            KernelType kb = kCombos[c][1];
+            ProbeResult solo = measure_solo(kKernels[ri], coreA, cfg, reps,
+                                             seed + 17000u + static_cast<unsigned>((ri * kNumInterfererCombos + c) * 100));
+            ProbeResult contended = measure_contended_multi(
+                kKernels[ri], coreA, {{ka, coreB}, {kb, coreC}}, cfg, reps,
+                seed + 21000u + static_cast<unsigned>((ri * kNumInterfererCombos + c) * 100));
+            profile.all_pinned = profile.all_pinned && solo.pinned && contended.pinned;
+            profile.pi3[ri][c] = (solo.seconds > 0.0) ? contended.seconds / solo.seconds : 1.0;
+        }
+    }
+
     for (std::size_t from = 0; from < num_processors; ++from) {
         int from_core = core_for_processor(static_cast<int>(from));
         for (std::size_t to = 0; to < num_processors; ++to) {

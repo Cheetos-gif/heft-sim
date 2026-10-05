@@ -192,6 +192,52 @@ int main() {
     single_proc.comm = {{0.0}};
     check(single_proc.mean_comm_cost() == 0.0, "mean_comm_cost() == 0 when num_processors < 2");
 
+    // --- combo_index(): pure function, deterministic regardless of hardware ---
+    check(combo_index(KernelType::COMPUTE_BOUND, KernelType::COMPUTE_BOUND) == 0,
+          "combo_index(COMPUTE, COMPUTE) == 0");
+    check(combo_index(KernelType::COMPUTE_BOUND, KernelType::MEMORY_BOUND) == 1,
+          "combo_index(COMPUTE, MEMORY) == 1");
+    check(combo_index(KernelType::MEMORY_BOUND, KernelType::COMPUTE_BOUND) == 1,
+          "combo_index(MEMORY, COMPUTE) == 1 (order-independent)");
+    check(combo_index(KernelType::MEMORY_BOUND, KernelType::MEMORY_BOUND) == 2,
+          "combo_index(MEMORY, MEMORY) == 2");
+
+    // --- CalibrationProfile: pi3 positive (identity fallback is also > 0) ---
+    for (std::size_t ri = 0; ri < kNumKernels; ++ri) {
+        for (std::size_t c = 0; c < kNumInterfererCombos; ++c) {
+            check(profile.pi3[ri][c] > 0.0,
+                  "pi3[" + std::to_string(ri) + "][" + std::to_string(c) + "] > 0");
+        }
+    }
+
+    // --- measure_contended_multi: rejects a shared core (reporter/interferer) ---
+    bool multi_threw_a = false;
+    try {
+        measure_contended_multi(KernelType::MEMORY_BOUND, 0, {{KernelType::MEMORY_BOUND, 0}}, cfg, 1, 1);
+    } catch (const std::invalid_argument&) {
+        multi_threw_a = true;
+    }
+    check(multi_threw_a, "measure_contended_multi(interferer shares reporter_core) throws std::invalid_argument");
+
+    // --- measure_contended_multi: rejects two interferers sharing a core ---
+    if (hc >= 3) {
+        bool multi_threw_b = false;
+        try {
+            measure_contended_multi(KernelType::MEMORY_BOUND, 0,
+                                     {{KernelType::MEMORY_BOUND, 1}, {KernelType::COMPUTE_BOUND, 1}}, cfg, 1, 1);
+        } catch (const std::invalid_argument&) {
+            multi_threw_b = true;
+        }
+        check(multi_threw_b, "measure_contended_multi(two interferers share a core) throws std::invalid_argument");
+
+        // --- measure_contended_multi: positive, finite with genuinely distinct cores ---
+        ProbeResult multi = measure_contended_multi(
+            KernelType::MEMORY_BOUND, 0, {{KernelType::MEMORY_BOUND, 1}, {KernelType::MEMORY_BOUND, 2}}, cfg, 3, 21);
+        check(multi.seconds > 0.0, "measure_contended_multi(2 interferers) > 0");
+    } else {
+        std::printf("(skipping measure_contended_multi 3-core checks -- fewer than 3 cores available)\n");
+    }
+
     std::printf("%d/%d checks passed\n", g_checks - g_failures, g_checks);
     return g_failures == 0 ? 0 : 1;
 }

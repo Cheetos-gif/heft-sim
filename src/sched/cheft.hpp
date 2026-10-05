@@ -11,15 +11,28 @@
 // pre-placement priority, so it has nothing to condition on yet.
 //
 // The correction happens only at EFT insertion: for each candidate
-// processor, cheft inflates a task's base (solo, sigma) duration by the
-// worst measured pi multiplier (src/profile/calibration.hpp) against
-// whatever already-placed tasks on OTHER processors tentatively overlap
-// its execution window, then picks the processor with the smallest
-// *inflated* finish time instead of src/sched/heft.cpp's uninflated one.
-// heft.cpp itself is not modified -- cheft.cpp duplicates its small
-// find_earliest_slot() gap-finder rather than touching the reference
-// implementation (same reasoning as src/sched/eheft.hpp leaving it
-// alone: it must stay the unmodified contention-oblivious baseline).
+// processor, cheft inflates a task's base (solo, sigma) duration by a
+// contention multiplier (src/profile/calibration.hpp) against whatever
+// already-placed tasks on OTHER processors tentatively overlap its
+// execution window -- a genuine measured pairwise pi when exactly one
+// co-runner overlaps, a genuine measured 3-way pi3 when exactly two
+// co-runners overlap (the case that matters at the project's default
+// num_processors == 3: at most two OTHER processors exist), and the
+// maximum pairwise pi as a conservative fallback only for >= 3
+// simultaneous co-runners (unreachable below num_processors == 5, not
+// exercised by this project's fixtures/benchmarks). Ready-time
+// computation also uses the calibrated per-processor-pair comm cost
+// (profile::CalibrationProfile::comm_cost()) directly, not
+// src/sched/eheft.hpp's single-scalar mean_comm_cost() -- cheft has its
+// own insertion loop, unconstrained by src/dag/dag.hpp's one-cost-per-
+// edge representation that forces eheft (which delegates to
+// heft_schedule() on a pre-built Dag) to use a flat average instead.
+// cheft then picks the processor with the smallest *inflated* finish
+// time instead of src/sched/heft.cpp's uninflated one. heft.cpp itself
+// is not modified -- cheft.cpp duplicates its small find_earliest_slot()
+// gap-finder rather than touching the reference implementation (same
+// reasoning as src/sched/eheft.hpp leaving it alone: it must stay the
+// unmodified contention-oblivious baseline).
 //
 // Known approximations -- documented, not hidden; measuring exactly how
 // far this falls short of real contention is the point of this project:
@@ -28,12 +41,11 @@
 //     *later* that ends up temporally overlapping is invisible at
 //     decision time -- the same greedy, never-revisit-a-placement
 //     limitation HEFT's own EFT insertion already has for cost.
-//   - pi is only ever measured pairwise -- one reporter, one interferer
-//     (src/profile/comm_probe.hpp's methodology, after Mars et al.,
-//     Bubble-Up). With more than one concurrent co-runner, cheft takes
-//     the *maximum* pairwise pi across every overlapping co-runner as a
-//     single conservative estimate -- not a validated N-way interference
-//     model.
+//   - pi/pi3 are measured on one representative set of cores (not every
+//     possible core combination -- src/profile/comm_probe.hpp's
+//     methodology, after Mars et al., Bubble-Up), and only up to 3-way;
+//     beyond that, the maximum-pairwise fallback above is not a
+//     validated N-way interference model.
 //   - A task's inflated duration is computed only *after*
 //     find_earliest_slot() has already picked a start time using the
 //     uninflated (base, sigma) duration. The inflated window is never
