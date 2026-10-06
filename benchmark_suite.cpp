@@ -10,10 +10,14 @@
 // tests/fixtures/, for the same reason that one does: it's an
 // experiment, not a pass/fail check.
 //
-// Runs {naive, eheft, cheft} (src/sched/{naive,eheft,cheft}.hpp) against
-// a corpus of generated DAGs (src/dag/generators.hpp, 5 shapes x 3 seed
-// replicates each = 15 DAGs), each executed for real on pinned threads
-// (src/exec/dispatcher.hpp). Raw (uncalibrated) heft is deliberately
+// Runs {naive, eheft, pheft, cheft} (src/sched/{naive,eheft,pheft,cheft}.hpp)
+// against a corpus of generated DAGs (src/dag/generators.hpp, 5 shapes x 3
+// seed replicates each = 15 DAGs), each executed for real on pinned threads
+// (src/exec/dispatcher.hpp). pheft is the confound-isolating control named
+// in REPORT.md: cheft's own EFT insertion loop (per-processor-pair comm
+// cost) with the contention multiplier forced off, so eheft->pheft isolates
+// the comm-cost-model effect and pheft->cheft isolates contention-awareness
+// alone (see src/sched/pheft.hpp). Raw (uncalibrated) heft is deliberately
 // excluded -- see tests/fixtures/topcuoglu_calibrated.cpp's own
 // precedent: a predicted-vs-measured comparison is only meaningful once
 // costs are in real seconds (calibrated); heft_schedule() against a
@@ -25,7 +29,8 @@
 //        benchmark_suite benchmark_suite.cpp
 //        src/dag/dag.cpp src/dag/generators.cpp
 //        src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp
-//        src/sched/cheft.cpp src/kernels/kernel.cpp src/exec/affinity.cpp
+//        src/sched/pheft.cpp src/sched/cheft.cpp src/kernels/kernel.cpp
+//        src/exec/affinity.cpp
 //        src/exec/event_log.cpp src/exec/results_log.cpp
 //        src/exec/heartbeat.cpp src/exec/dispatcher.cpp
 //        src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp
@@ -41,6 +46,7 @@
 #include "src/sched/cheft.hpp"
 #include "src/sched/eheft.hpp"
 #include "src/sched/naive.hpp"
+#include "src/sched/pheft.hpp"
 #include "src/sched/scheduler.hpp"
 
 #include <cstdio>
@@ -128,8 +134,10 @@ int main() {
         Dag calibrated = calibrate_costs(topology, profile);
 
         std::vector<std::unique_ptr<Scheduler>> schedulers;
+
         schedulers.push_back(std::make_unique<NaiveScheduler>());
         schedulers.push_back(std::make_unique<EheftScheduler>(profile));
+        schedulers.push_back(std::make_unique<PheftScheduler>(profile));
         schedulers.push_back(std::make_unique<CheftScheduler>(profile));
 
         std::printf("\n%s (%zu tasks):\n", spec.id.c_str(), calibrated.num_tasks());

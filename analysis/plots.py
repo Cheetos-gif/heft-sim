@@ -21,13 +21,14 @@ from common import load_results
 SCHED_COLOR = {
     "naive": "#999999",
     "eheft": "#4c72b0",
+    "pheft": "#dd8452",
     "cheft": "#c44e52",
 }
 
 
 def svg_bar_chart(rows, width: int | None = None, height: int = 480) -> str:
     dag_ids = sorted({r.dag_id for r in rows})
-    schedulers = sorted({r.scheduler for r in rows}, key=lambda s: {"naive": 0, "eheft": 1, "cheft": 2}.get(s, 9))
+    schedulers = sorted({r.scheduler for r in rows}, key=lambda s: {"naive": 0, "eheft": 1, "pheft": 2, "cheft": 3}.get(s, 9))
 
     # Scale width with the number of DAG groups so bars/labels never
     # get crowded regardless of corpus size -- fixed 900px was fine for

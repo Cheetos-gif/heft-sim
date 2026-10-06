@@ -4,10 +4,13 @@
 Summary statistics: mean/median/min/max predicted-vs-measured error% per
 scheduler, from out/results.csv (benchmark_suite.cpp's output). This is
 the number the project's research claim lives or dies on -- whether
-cheft's error% distribution is actually tighter than eheft's (naive
-isn't a fair comparison point the same way: it's calibrated too, via the
-same CalibrationProfile, but its own cost model never claimed to predict
-contention in the first place).
+cheft's error% distribution is actually tighter than eheft's, and (via
+pheft, the comm-model/contention-isolation control -- src/sched/
+pheft.hpp) *why*: eheft->pheft isolates the comm-cost-model effect,
+pheft->cheft isolates contention-awareness alone. naive isn't a fair
+comparison point the same way: it's calibrated too, via the same
+CalibrationProfile, but its own cost model never claimed to predict
+contention in the first place.
 
 Usage: python3 analysis/tables.py [path/to/results.csv]
 """
@@ -85,6 +88,41 @@ def main() -> None:
         print()
         print(f"cheft vs eheft, mean |error|% lower on: cheft {cheft_wins}/{len(shapes)} shapes, "
               f"eheft {eheft_wins}/{len(shapes)} shapes")
+
+    # pheft isolates the two things eheft->cheft conflates (see
+    # src/sched/pheft.hpp): eheft->pheft holds contention-awareness at
+    # "off" and changes only the comm-cost model (flat mean ->
+    # per-processor-pair); pheft->cheft then holds the comm model
+    # constant and changes only contention-awareness ("off" -> "on").
+    # Reporting both gaps separately, instead of only eheft-vs-cheft,
+    # shows which of the two actually accounts for cheft's edge.
+    if "pheft" in schedulers:
+        def wins(a: str, b: str) -> tuple[int, int]:
+            a_wins = b_wins = 0
+            for shape in shapes:
+                a_group = by_shape_sched.get((shape, a), [])
+                b_group = by_shape_sched.get((shape, b), [])
+                if not a_group or not b_group:
+                    continue
+                a_mean = statistics.mean(abs(r.error_pct) for r in a_group)
+                b_mean = statistics.mean(abs(r.error_pct) for r in b_group)
+                if a_mean < b_mean:
+                    a_wins += 1
+                elif b_mean < a_mean:
+                    b_wins += 1
+            return a_wins, b_wins
+
+        print()
+        if "eheft" in schedulers:
+            p_wins, e_wins = wins("pheft", "eheft")
+            print(f"[comm-model isolation] pheft vs eheft, mean |error|% lower on: "
+                  f"pheft {p_wins}/{len(shapes)} shapes, eheft {e_wins}/{len(shapes)} shapes "
+                  f"(contention-awareness held constant at 'off'; only the comm-cost model differs)")
+        if "cheft" in schedulers:
+            c_wins, p_wins2 = wins("cheft", "pheft")
+            print(f"[contention isolation] cheft vs pheft, mean |error|% lower on: "
+                  f"cheft {c_wins}/{len(shapes)} shapes, pheft {p_wins2}/{len(shapes)} shapes "
+                  f"(comm-cost model held constant at per-pair; only contention-awareness differs)")
 
     print()
     print("Per-run detail:")

@@ -49,7 +49,7 @@ fi
 header "BUILD: cleaning and compiling everything from scratch"
 
 rm -f contention_pilot benchmark_suite
-rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated tests/fixtures/profile_calibration tests/fixtures/eheft tests/fixtures/generators tests/fixtures/cheft
+rm -f tests/fixtures/topcuoglu tests/fixtures/naive tests/fixtures/topcuoglu_exec tests/fixtures/topcuoglu_ft tests/fixtures/topcuoglu_calibrated tests/fixtures/profile_calibration tests/fixtures/eheft tests/fixtures/generators tests/fixtures/cheft tests/fixtures/pheft
 rm -f tests/fixtures/*.exe
 rm -rf out
 
@@ -59,7 +59,7 @@ $CXX $CXXFLAGS_PTHREAD -o contention_pilot contention_pilot.cpp
 echo "-- benchmark_suite (multi-DAG naive/eheft/cheft sweep -> out/results.csv)"
 $CXX $CXXFLAGS_PTHREAD -o benchmark_suite benchmark_suite.cpp \
     src/dag/dag.cpp src/dag/generators.cpp \
-    src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp src/sched/cheft.cpp \
+    src/sched/heft.cpp src/sched/naive.cpp src/sched/eheft.cpp src/sched/pheft.cpp src/sched/cheft.cpp \
     src/kernels/kernel.cpp src/exec/affinity.cpp src/exec/event_log.cpp src/exec/results_log.cpp \
     src/exec/heartbeat.cpp src/exec/dispatcher.cpp \
     src/ft/fault_injector.cpp src/ft/heartbeat_monitor.cpp \
@@ -110,6 +110,11 @@ $CXX $CXXFLAGS -o tests/fixtures/cheft \
     tests/fixtures/cheft.cpp src/dag/dag.cpp src/sched/heft.cpp src/sched/eheft.cpp src/sched/cheft.cpp \
     src/profile/calibration.cpp
 
+echo "-- tests/fixtures/pheft (comm-model/contention-isolation control regression)"
+$CXX $CXXFLAGS -o tests/fixtures/pheft \
+    tests/fixtures/pheft.cpp src/dag/dag.cpp src/sched/heft.cpp src/sched/eheft.cpp src/sched/pheft.cpp src/sched/cheft.cpp \
+    src/profile/calibration.cpp
+
 echo "-- tests/fixtures/profile_calibration (src/profile/ structural regression)"
 $CXX $CXXFLAGS_PTHREAD -o tests/fixtures/profile_calibration \
     tests/fixtures/profile_calibration.cpp \
@@ -130,7 +135,7 @@ $RUN ./contention_pilot 10
 
 # ------------------------------------------------------------- stage 2
 
-header "STAGE 2/7: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft + cheft)"
+header "STAGE 2/7: regression suite (Topcuoglu HEFT paper fixture + src/profile/ + eheft/pheft/cheft)"
 if $RUN ./tests/fixtures/topcuoglu; then
     echo "RESULT: PASS -- HEFT matches the published paper's ranks/schedule/makespan"
 else
@@ -149,6 +154,13 @@ if $RUN ./tests/fixtures/cheft; then
     echo "RESULT: PASS -- cheft contention-aware EFT insertion matches hand-computed fixture"
 else
     echo "RESULT: FAIL -- cheft disagrees with hand-computed fixture"
+    exit 1
+fi
+echo
+if $RUN ./tests/fixtures/pheft; then
+    echo "RESULT: PASS -- pheft isolation properties (matches eheft's contention-obliviousness, cheft's per-pair comm) hold"
+else
+    echo "RESULT: FAIL -- pheft disagrees with hand-computed fixture"
     exit 1
 fi
 echo
@@ -217,7 +229,7 @@ $RUN ./tests/fixtures/topcuoglu_calibrated
 
 # ------------------------------------------------------------- stage 7
 
-header "STAGE 7/7: multi-DAG benchmark sweep (naive/eheft/cheft) -> out/results.csv + analysis/"
+header "STAGE 7/7: multi-DAG benchmark sweep (naive/eheft/pheft/cheft) -> out/results.csv + analysis/"
 $RUN ./benchmark_suite
 echo
 if command -v python3 >/dev/null 2>&1; then
